@@ -5,7 +5,7 @@ Forking a github repo to another github repo, cloning your copy to local, then t
     `git remote add upstream https://github.com/owner/repo.git`
     
 1. Branch locally:
-    `git branch -c my_branch`
+    `git checkout -b my_branch`
 1. Do work, commit changes to local branch.
 1. Push local branch to origin:
     `git push origin my_branch`
