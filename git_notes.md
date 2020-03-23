@@ -19,3 +19,9 @@ Forking a github repo to another github repo, cloning your copy to local, then t
 1. Delete your branch locally:
     `git branch -D my_branch`
 1. Delete your branch on your github repo
+
+Working on changes, want to go back but still save your changes for later reference? Stash them!
+
+1. `git stash` - puts your local, uncommitted changes into your local-only stash
+1. `git stash branch <name>` - (optional) create a new branch based on your stashed changes
+1. OR `git stash pop`/`apply` - apply your last stash to current branch. `apply` applies them and leaves them in the stash, `pop` applies them and removes them from the stash.
