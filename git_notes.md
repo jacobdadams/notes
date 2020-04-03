@@ -25,3 +25,35 @@ Working on changes, want to go back but still save your changes for later refere
 1. `git stash` - puts your local, uncommitted changes into your local-only stash
 1. `git stash branch <name>` - (optional) create a new branch based on your stashed changes
 1. OR `git stash pop`/`apply` - apply your last stash to current branch. `apply` applies them and leaves them in the stash, `pop` applies them and removes them from the stash.
+
+### Create repo on github, clone local, branch, push branch to github, PR for branch to master via github, rebase and merge branch on github, BUT FORGOT to rebase & merge locally or delete the branch and create new one
+
+Now we've got a situation where a tree shows two separate branches with duplicate commits:
+
+1. `master(origin)`, which is also `origin/HEAD`
+1. `feature(origin)`
+
+Because we forgot to rebase the local `feature` branch but instead made new commits and pushed them to origin, `feature(origin)`'s parent remains our initial commit. `master(origin)` was updated with all our changes and now contains duplicate commits for all the history added by the earlier work on `feature`. `master(origin)` and `feature(origin)`'s comment parent is the intial commit, not the point where we rebased & merged.
+
+This shows up in github when we push our new changes on `feature` and then go to do a Pull Request. The diffs show all the changes going back to the initial commit, instead of just going back to our first rebase and merge. 
+
+To fix this, we need to do three things, assuming right now the local `feature` branch has our latest changes:
+
+1. Locally, rebase `feature` onto `master`:
+   * `git checkout feature`
+   * `git rebase master`
+   * `git checkout master` (we'll stay on `master` for future steps)
+   * This moves our local `feature` branch's parent to the latest common commit with our local `master` branch
+2. Delete the `feature` branch on github (easier? than trying to rebase this remote branch)
+   * We'll push it again later to recreate the branch with the proper parent
+3. Stop our local repo from tracking github by removing `origin` altogether:
+   * `git remote rm origin`
+   * Now all the refernces to `origin` are gone in the tree view. Our local repo should now have the proper graph
+4. Re-add our github repo as `origin` and track it again from master:
+   * `git remote add origin https://github.com/org/repo.git`
+   * `git branch -u origin/master` OR `git fetch` (if `branch -u` fails, `fetch`)
+   * Now our tree shows `master` tracking `origin/master` (assuming `origin/master` hasn't changed since our first rebase & merge; if it has...?)
+5. Publish/push `feature` to github:
+   * `git push -u origin feature`
+
+Now both the local and remote `feature` branches should branch off of the latest common commit from `master`. You can do a pull request from github to merge `feature` to `master`, and after pulling them again locally everything should look right.
