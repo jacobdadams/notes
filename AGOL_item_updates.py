@@ -88,15 +88,15 @@ new_item = False  #: True to publish new item, False to overwrite existing data
 project_path = Path(r'')
 
 print('Getting AGOL organization object...')
-jake = arcgis.gis.GIS(portal, user, getpass.getpass())
+org = arcgis.gis.GIS(portal, user, getpass.getpass())
 
 print(f'Staging {fc_path_str}...')
 service_definition_path = define_service(project_path, map_name, layer_name, fc_path_str, item_name, temp_dir_path)
 
 #: publish if it doesn't exist yet
 if new_item:
-    publish(jake, service_definition_path)
+    publish(org, service_definition_path)
 
 #: otherwise, update using the item_id and sd_id above
 else:
-    overwrite(jake, service_definition_path, item_id, sd_id)
+    overwrite(org, service_definition_path, item_id, sd_id)
