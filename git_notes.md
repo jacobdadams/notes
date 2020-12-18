@@ -57,3 +57,15 @@ To fix this, we need to do three things, assuming right now the local `feature` 
    * `git push -u origin feature`
 
 Now both the local and remote `feature` branches should branch off of the latest common commit from `master`. You can do a pull request from github to merge `feature` to `master`, and after pulling them again locally everything should look right.
+
+### Move current branch back a few commits but keep them as a separate branch of their own
+
+Let's say you make a few commits working on feature C but then decide to table that feature for now. You want to keep that work for a later date, but move your branch back to where you were before you started. We'll create a new branch at the current HEAD, then rebase our original branch back to a good commit.
+
+1. Create a new branch (`feat_c`) from the current branch (`dev`).
+1. Push the new branch up to github.
+1. Checkout your original branch (`dev`).
+1. Do a hard reset of your current branch (`dev`) to the appropriate commit in your history.
+1. Force push your current branch back to github to update `dev/origin` to our new (old) point: `git push -f`.
+
+Now all the work you did on feature C is saved in branch `feat_c` and you can keep working on branch `dev` from where you were before you started on feature C.
