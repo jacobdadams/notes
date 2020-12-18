@@ -68,4 +68,4 @@ Let's say you make a few commits working on feature C but then decide to table t
 1. Do a hard reset of your current branch (`dev`) to the appropriate commit in your history.
 1. Force push your current branch back to github to update `dev/origin` to our new (old) point: `git push -f`.
 
-Now all the work you did on feature C is saved in branch `feat_c` and you can keep working on branch `dev` from where you were before you started on feature C.
+Now all the commits you did for feature C are saved in branch `feat_c` and you can keep working on branch `dev` from where you were before you started.
