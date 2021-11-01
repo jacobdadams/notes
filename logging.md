@@ -1,5 +1,7 @@
 # Python Logging
 
+## Logging structure
+
 re https://stackoverflow.com/questions/42388844/where-to-configure-logging:
 
 Author should instantiate the logger at the right level:
@@ -35,6 +37,7 @@ The names may not suit your application. For instance you may want an instance l
 ---
 
 THEREFORE, let's lay out a package structure (matches github.com/agrc/python):
+
 ```
 my_project/
  - src/
@@ -56,7 +59,7 @@ main.py is our main module for the program, not to be confused with `'__main__'`
 
 other_module.py holds two helper classes, Class1 and Class2. 
 
-## Package logger
+### Package logger
 
 `my_project/__init__.py` is run first whenever the package is imported, which I think occurs whenever it's run using an entry point defined in setup.py. Therefore, it's a great place to put stuff that should be package-wide- like the package's main logger! Let's set up a logger to log debug and above to the console. Any children of this logger will inherit it's level, etc.
 
@@ -74,7 +77,14 @@ logger.addHandler(cli_handler)
 
 If we were to look at the running code's `logging.Logger.manager.loggerDict` ([https://stackoverflow.com/a/62585966/16290428](https://stackoverflow.com/a/62585966/16290428)), this logger would be named `my_project`.
 
-## Module loggers
+#### Alternate
+
+The code in `__init__.py` is run ANY time it's imported, which includes everytime you save the file in VS Code (and probably some other dev-related times too). This can cause unplanned file rotation if you've got a rotating file handler.
+
+Calls to our loggers in each module/class go to the proper logger in the hierarchy because we use the loggers we got via `__name__`. If we don't want to put something in `__init__.py`, we could just as easily call `project_logger = .getLogger('my_project')` in the main.py module. Now, `project_logger` would be have the hierarchical name `my_project` and any other loggers in the my_project package created with `__name__` would be children (because `__name__` resolves to package.module, so my_project.other_module).
+
+### Module loggers
+
 Now we need to set up loggers for the modules. By default, they will be children of the package's logger (citation needed?). We'll do this at the beginning of the both main.py and other_module.py, after the imports but before any functions (or maybe within `if __name__ == '__main__' in main.py).
 
 ```python
@@ -83,7 +93,7 @@ module_logger = logging.getLogger(__name__)
 
 These loggers will be named `my_project.main` and `my_project.other_module`. We can use them via `module_logger.info()` (or whatever other level).
 
-## Class loggers
+### Class loggers
 
 In Class1 and Class2, we can create class loggers within each classes' `__init__()` as follows:
 
@@ -98,6 +108,6 @@ These loggers will be named `my_project.other_module.Class1` and `my_project.oth
 
 Because all the other loggers are children of the `my_project` logger, they inherit it's level, handler, and formatter. If we want to make changes to that, we'll do it in `__init__.py`.  Generally, classes and other modules shouldn't try to specify other levels or handlers (unless it's a logger that's not part of the hierarchy, like a rotating file handler logger used for writing out some other file). Do it in one place and keep it clean.
 
-## An alternate
+## Accessing imported code's loggers
 
-Calls to our loggers in each module/class go to the proper logger in the hierarchy because we use the loggers we got via `__name__`. If we don't want to put something in `__init__.py`, we could just as easily call `project_logger = .getLogger('my_project')` in the main.py module. Now, `project_logger` would be have the hierarchical name `my_project` and any other loggers in the my_project package created with `__name__` would be children (because `__name__` resolves to package.module, so my_project.other_module). 
+Let's say you've imported a library that uses loggers, possibly using this same heirarchy. Usually, a library shouldn't define any handlers/formatters, just creating the loggers. Then, in your code, you can handle it however you'd like. The libary should document the names of the loggers it creates. In your code, you can then get these loggers by name and attach whatever handlers/formatters you've already created to them. You must do this manually; I'm not seeing any way to attach the library's loggers as children of your app's loggers (ie, `app.library.module.class`). However, as long as they're using the same handler, messages created by the loggers will be added in the appropriate place/order/format.
