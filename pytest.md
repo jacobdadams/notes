@@ -6,7 +6,7 @@ You can replace bits of code and data structures by either passing a Mock direct
 
 ### 3rd-party code: Patch
 
-You'll usually patch 3rd-party code that you've imported into your code under test. If there's just a single function you need to patch, use `mocker.patch.object(module, 'function_name')`. If you need to patch an entire object, use `mocker.patch('module.object')`. 
+You'll usually patch 3rd-party code that you've imported into your code under test. If there's just a single function you need to patch, use `mocker.patch.object(module, 'function_name')` and pass in a mock function object. If you need to patch an entire object, use `mocker.patch('module.object')`.
 
 If you need to set certain attributes of your mocked-out object, or access it later to test if it's been called a certain way, you can create a new Mock and pass it's reference to patch() using the `new=` argument.
 
@@ -18,7 +18,7 @@ read_csv_mock.return_value = pd.DataFrame()
 mocker.patch.object(pd, 'read_csv', new=read_csv_mock)
 ```
 
-As noted above, I can patch out the entire arcpy.da.UpdateCursor context manager object while controlling the resource it returns:
+As noted below, I can patch out the entire arcpy.da.UpdateCursor context manager object while controlling the resource it returns:
 
 ```python
 cursor_mock = mocker.MagicMock()
@@ -29,6 +29,62 @@ cursor_mock.__iter__.return_value = [
 context_manager_mock = mocker.MagicMock()
 context_manager_mock.return_value.__enter__.return_value = cursor_mock
 mocker.patch('arcpy.da.UpdateCursor', new=context_manager_mock)
+```
+
+#### Patching objects vs functions
+
+For `mocker.patch.object()`, if the function you're patching needs to return another object and you want to set the return value for a method of that new object, you have to set the method's return value on `method_mock.return_value.method_name.return_value`.
+
+For example, in previous tests I needed to just patch out `feature_layer = arcgis.features.FeatureLayer.fromitem()` so that it didn't make a call. The tests never relied on feature_layer , so I didn't need a `new=` value in my patch:
+
+```python
+mocker.patch.object(arcgis.features.FeatureLayer, 'fromitem')
+```
+
+However, for another test I needed to set the return value of `feature_layer.edit_features()`. I initially tried creating a mock with a property `.edit_features` and set `.edit_features.return_value` to the desired output. I then passed this to the `new=` parameter of `mocker.patch.object`. However, this fails because we are patching a function, so the mock that is used for patching is the function object, NOT the return value of that function (remembering that everything in Python is an object, including functions). Therefore, my mock's `.edit_features.return_value` property is never accessed.
+
+Instead, I need to set `.return_value.edit_features.return_value` to the desired output. This means "patch this function with a mock object. The mock object's return value (another mock) should have the `.edit_features()` method, and this method's return value should be this set of data:".
+
+```python
+#: This is the mocked function object
+fromitem_function_mock = mocker.Mock()
+#: This is the return value of the .edit_features method of the object returned by the mocked function object
+fromitem_function_mock.return_value.edit_features.return_value = {
+    'addResults': [],
+    'updateResults': [
+        {
+            'objectId': 1,
+            'success': True
+        },
+        {
+            'objectId': 2,
+            'success': True
+        },
+    ],
+    'deleteResults': [],
+}
+#: Patch the fromitem() method on the arcgis.features.FeatureLayer object with our function mock
+mocker.patch.object(arcgis.features.FeatureLayer, 'fromitem', new=fromitem_function_mock)
+```
+
+#### patch vs patch.object
+
+From [stackexchange](https://stackoverflow.com/a/18393879/16290428):
+"Patch assumes that you are not directly importing the object but that it is being used by the object you are testing"
+"If you are directly importing the module to be tested, you can use patch.object as follows:"
+
+```python
+#test_case_2.py
+import foo
+from mock import patch
+
+@patch.object(foo, 'some_fn')
+def test_foo(test_some_fn):
+    test_some_fn.return_value = 'test-val-1'
+    tmp = foo.Foo()
+    assert tmp.method_1() == 'test-val-1'
+    test_some_fn.return_value = 'test-val-2'
+    assert tmp.method_1() == 'test-val-2'
 ```
 
 ### Your code with classes: usually Mock()
