@@ -162,6 +162,27 @@ mocker.patch('arcpy.da.UpdateCursor', new=context_manager_mock)
 cursor_mock.updateRow.assert_called_with(['12345', '57', 100.00, '1/1/2022'])
 ```
 
+### Patching out ALL of arcpy
+
+If you have tests that patch out arcpy (like the cursor example above) that you want to work on environments where arcpy is not available (a conda env without arcpy, github's CI/CD testing, etc), you can create a fake arcpy module and import that as `arcpy`. Now, in your tests, the `arcpy` name is bound to your fake module instead of the real module. If arcpy already exists in your test's namespace, it stomps over the normal arcpy name. If it doesn't, then this is the only arcpy your tests ever see.
+
+To do this, create a `.py` module _in your test folder_ named something like `mock_arcpy.py` and put the following code in it:
+
+```python
+import sys
+import types
+from unittest.mock import Mock
+
+module_name = 'arcpy'
+arcpy = types.ModuleType(module_name)
+sys.modules[module_name] = arcpy
+arcpy.da = Mock(name=module_name + '.da')
+```
+
+This inserts a fake, empty module into the namespace called `arcpy`. If you're patching out submodules (like `.da`), you'll need to explicitely define them in your fake pacakge using `Mock`s from `unittest`.
+
+Now, in your test file, just `import mock_arcpy as arcpy` to insert this fake arcpy into your test's namespace. Any calls to or patches on `arcpy` will thus get your fake arcpy module.
+
 ### Different return values each time
 
 If you have a function that is called multiple times in your function under test and you need to return different values each time, you can use `.side_effect` with an iterable and it will iterate through it each time the function is called:
@@ -188,4 +209,34 @@ For example, I want to test that my pysftp connection is opened using the right 
 cnopts_mock = mocker.Mock()
 cnopts_mock.side_effect = lambda knownhosts: knownhosts  #: knownhosts is the argument name to the initializer
 mocker.patch('pysftp.CnOpts', new=cnopts_mock)
+```
+
+### Force an ImportError for an available package
+
+Say you want to test your code properly handles a missing import, but your test environment has it installed/availble (like above where you're mocking out all of arcpy, so `arcpy` exists in your namespace but you want to test that your code properly warns the user that it isn't, in fact, installed).
+
+You can use a pytest fixture that wraps the `__import__` builtin with a small function that manually raises an `ImportError` for defined package names:
+
+```python
+@pytest.fixture
+def hide_available_pkg(monkeypatch):
+    """Mocks import to throw an ImportError (for error handling testing purposes) for a package that does, in fact, exist"""
+    import_orig = builtins.__import__
+
+    def mocked_import(name, *args, **kwargs):
+        if name == 'arcpy':
+            raise ImportError()
+        return import_orig(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', mocked_import)
+```
+
+We specifically call out the package name in the `if name ==` line in `mocked_import()` and raise our error if that's the name it's trying to import. Otherwise, we just pass everything to the normal import function.
+
+To use this, we just decorate our test function thusly:
+
+```python
+@pytest.mark.usefixtures('hide_available_pkg')
+def test_my_method_raises_error_on_import_failure():
+    ...
 ```
