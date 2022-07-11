@@ -31,6 +31,75 @@ context_manager_mock.return_value.__enter__.return_value = cursor_mock
 mocker.patch('arcpy.da.UpdateCursor', new=context_manager_mock)
 ```
 
+#### Where to patch
+
+The [unittest docs on where to patch](https://docs.python.org/3/library/unittest.mock.html#id6), provide this guidance on where to patch:
+
+> patch() works by (temporarily) changing the object that a name points to with another one. There can be many names pointing to any individual object, so for patching to work you must ensure that you patch the name used by the system under test.
+>
+> The basic principle is that you patch where an object is looked up, which is not necessarily the same place as where it is defined.
+
+This means you have to think about the namespace of the function you're testing when it runs, which is not neccesarily the same as its file/package structure.
+
+For example, in developing palletjack 3.0.0, I have the following module structure:
+
+```
+src\
+    loaders.py
+    transform.py
+    updaters.py
+    utils.py
+__init__.py
+```
+
+In it's `__init__.py`, I have `from . import transform` along with several `from updaters import SomeClass` so that a client can `import palletjack` and then access the methods in transform via `palletjack.transform.method` and also directly import the classes via `from palletjack import SomeClass` (this may change...).
+
+In `transform.py`, I have `from . import utils` so that I can access the utility methods. Because `utils` is not imported in `__init__.py`, these utility methods are not exposed to clients. `transform.py` looks something like this:
+
+```python
+from . import utils
+
+class SomeTransformClass:
+    def some_transform_method_that_calls_util_method(self):
+        ...
+        some_util_method()
+        ...
+```
+
+Let's say I want to test `some_transform_method_that_calls_util_method` and I need to patch that utility method. Because the method under test only uses a single `utils` function, I'm just going to patch out that entire module. My first inclination is to patch it out _where it's defined_ like thus:
+
+```python
+import palletjack
+
+mocker.patch.object(palletjack, 'utils', autospec=True)  #: autospec=True means it automatically stubs out all the functions in the object we're patching so we can check if it was called in the assert stage
+transform_object = SomeClass()
+transform_object.some_transform_method_that_calls_util_method()
+
+palletjack.utils.some_util_method.assert_called_once()  #: make sure the util method was called
+```
+
+However, this doesn't work properly. Instead, we need to patch it out _where it's looked up_:
+
+```python
+import palletjack
+
+mocker.patch.object(palletjack.transform, 'utils', autospec=True)  #: autospec=True means it automatically stubs out all the functions in the object we're patching so we can check if it was called in the assert stage
+transform_object = SomeClass()
+transform_object.some_transform_method_that_calls_util_method()
+
+palletjack.transform.utils.some_util_method.assert_called_once()  #: make sure the util method was called
+```
+
+What's going on? `utils.py` is side-by-side with `transform.py` in the module hierarchy, not part of it somehow. Let's dig into the namspaces.
+
+If you debug the first test and pause before you go into the method under test, you'll see that while `palletjack.utils` references a mock object with all the right mocked-out methods, when you continue the `some_transform_method_that_calls_util_method` call doesn't call the mocked-out `some_util_method`. This is because of the way `transform.py` imports `utils` into the namespace.
+
+First, in our test `import palletjack` imports palletjack and all its contents (as defined in `__init__.py`) into the global namespace. So, in our test, if we were to try to directly call `util.some_util_method()`, it would reference our patched-out method.
+
+However, we instead call the utility method in `transform.py`. By calling `from . import utils` in `transform.py`, it imports the `utils` module and its functions into its namespace, but if you're still debugging the test you'll see that the contents of the "globals" namespace have changed as we get into the method under test. There is no `palletjack.utils`, but there is a `utils` with the regular, non-patched methods. The method under test does not have any reference to `palletjack.utils` so our patch is not visibile to it.
+
+Going back to the test module's perspective, the `utils` referenced in the method under test has a full reference of `palletjack.transform.utils`. Thus, in the test module, we need to patch that out instead of `palletjack.utils`, as shown in the second example above. This is what is meant by patching where it is called instead of where it is defined.
+
 #### Patching objects vs functions
 
 For `mocker.patch.object()`, if the function you're patching needs to return another object and you want to set the return value for a method of that new object, you have to set the method's return value on `method_mock.return_value.method_name.return_value`.
@@ -239,4 +308,46 @@ To use this, we just decorate our test function thusly:
 @pytest.mark.usefixtures('hide_available_pkg')
 def test_my_method_raises_error_on_import_failure():
     ...
+```
+
+### Mock out calls to open
+
+If you're using `open()` as a context manager, it's a little tricky to mock and assert. First, you need to create a mock with the `mock_open()` function and then patch out the builtin `open`:
+
+```python
+open_mock = mocker.mock_open()
+mocker.patch('builtins.open', open_mock)
+```
+
+If you're using `open` to read data, you can pass the `read_data` parameter to `mock_open()` to define what should come back.
+
+If you're writing and want to assert what was written, you have to jump through some hoops to assert. First, you call the `open_mock` object that was created from `mock_open()`. Then, you can access the `.write.call_arg_list` (and other normal call assertions) from that. You may need to debug to make sure you've got the expected values right. In the example below, there was a lot of additional calls for some reason (unknown for now). And then, each call was actually a "call" object with a list of tuples. I had to get the first two write calls, the first tuple in the list for each, and then compare against a single-item tuple of the expected write.
+
+```python
+#: I'm testing whether the middle empty `b''` is skipped in the write calls within _save_response_content(), which
+#: iterates over the return from .iter_content and passes if the chunk is False
+def test_save_response_content_skips_empty_chunks(self, mocker):
+    response_mock = mocker.MagicMock()
+    response_mock.iter_content.return_value = [b'\x01', b'', b'\x02']
+
+    open_mock = mocker.mock_open()
+    mocker.patch('builtins.open', open_mock)
+
+    palletjack.loaders.GoogleDriveDownloader._save_response_content(response_mock, '/foo/bar', chunk_size=1)
+
+    assert open_mock().write.call_args_list[0][0] == (b'\x01',)
+    assert open_mock().write.call_args_list[1][0] == (b'\x02',)
+```
+
+References:
+[https://docs.python.org/3/library/unittest.mock.html#mock-open](https://docs.python.org/3/library/unittest.mock.html#mock-open)
+
+### Asserting args
+
+You can use `assert_called_with`, `assert_called_once_with`, and `assert_any_call` to test that a method/function was called as expected. However, you may need to specify any keyword args using arg_name=value in the assert call to get the test to pass as expected:
+
+```python
+session_mock.return_value.get.assert_called_with(
+    'https://docs.google.com/uc?export=download', params={'id': 'foo_file_id'}, stream=True
+)
 ```
