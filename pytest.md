@@ -233,24 +233,23 @@ cursor_mock.updateRow.assert_called_with(['12345', '57', 100.00, '1/1/2022'])
 
 ### Patching out ALL of arcpy
 
-If you have tests that patch out arcpy (like the cursor example above) that you want to work on environments where arcpy is not available (a conda env without arcpy, github's CI/CD testing, etc), you can create a fake arcpy module and import that as `arcpy`. Now, in your tests, the `arcpy` name is bound to your fake module instead of the real module. If arcpy already exists in your test's namespace, it stomps over the normal arcpy name. If it doesn't, then this is the only arcpy your tests ever see.
+Sometimes you have tests that patch out methods in arcpy (like the cursor example above) that you want to work on environments where arcpy is not available (a conda env without arcpy, github's CI/CD testing, etc), or they may otherwise rely on arcpy being present (an overly broad import in a module). To do this, you can create a mock arcpy object and insert that into `sys.modules` as `arcpy`. Now, in your tests, the `arcpy` name is bound to your mock instead of the real module. If arcpy already exists in your test's namespace, it stomps over the normal arcpy name. If a subsequent import tries to import arcpy, then they get the mock object instead.
 
-To do this, create a `.py` module _in your test folder_ named something like `mock_arcpy.py` and put the following code in it:
+To do this, create a module _in your test folder_ named something like `mock_arcpy.py` and put the following code in it:
 
 ```python
 import sys
-import types
 from unittest.mock import Mock
 
 module_name = 'arcpy'
-arcpy = types.ModuleType(module_name)
+arcpy = Mock(name=module_name)
 sys.modules[module_name] = arcpy
-arcpy.da = Mock(name=module_name + '.da')
+
 ```
 
-This inserts a fake, empty module into the namespace called `arcpy`. If you're patching out submodules (like `.da`), you'll need to explicitely define them in your fake pacakge using `Mock`s from `unittest`.
+This inserts a mock into the namespace called `arcpy`. Now, in your test file, just `import mock_arcpy` to insert this fake arcpy into your test's namespace. Any calls to `arcpy` will get your mock arcpy module and thus automatically create mock modules/classes/methods as needed.
 
-Now, in your test file, just `import mock_arcpy as arcpy` to insert this fake arcpy into your test's namespace. Any calls to or patches on `arcpy` will thus get your fake arcpy module.
+As a bonus, your tests won't import the real arcpy (which takes forever) and thus may run significantly faster.
 
 ### Different return values each time
 
