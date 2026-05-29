@@ -1,0 +1,17 @@
+gis/clips
+gis/Docs
+gis/Elevation
+gis/Exports
+gis/git
+gis/Inspiration
+gis/Logos
+gis/Notes
+gis/Downloads
+gis/Photos
+gis/Presentations
+gis/Projects
+gis/Projects Archive
+gis/SGID_internal
+gis/Software
+gis/Video Projects
+temp
